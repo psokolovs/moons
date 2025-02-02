@@ -3,317 +3,246 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Moon Life Journey - NES Edition</title>
-  <!-- Import a retro, pixelated font -->
-  <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+  <title>Moon Life Journey</title>
+  <!-- Optionally include a retro or modern font -->
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&display=swap" rel="stylesheet">
   <style>
-    /* Reset and basic styling for a retro NES look */
+    /* Reset & full-screen base */
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    body {
+    html, body {
+      width: 100%;
+      height: 100%;
       background: #000;
-      color: #0f0; /* classic green-on-black look */
-      font-family: 'Press Start 2P', cursive;
+      font-family: 'Orbitron', sans-serif;
       overflow: hidden;
     }
-    /* All "screens" will fill the viewport */
+    /* Common full-screen screen styling */
     .screen {
-      position: absolute;
-      top: 0;
-      left: 0;
+      position: fixed;
+      top: 0; left: 0;
       width: 100%;
       height: 100%;
       display: none;
       justify-content: center;
       align-items: center;
       flex-direction: column;
+      color: #fff;
       text-align: center;
     }
-    .active { display: flex; }
-    
-    /* Title Screen (Start Screen) */
-    #titleScreen {
-      background: #000;
+    .screen.active {
+      display: flex;
     }
-    #titleScreen h1 {
-      font-size: 2em;
-      margin-bottom: 20px;
-    }
-    .nes-button {
-      background: #222;
-      color: #0f0;
-      border: 2px solid #0f0;
-      padding: 10px 20px;
-      cursor: pointer;
-      font-size: 1em;
-      transition: background 0.2s;
-    }
-    .nes-button:hover {
-      background: #0f0;
-      color: #000;
-    }
-    
-    /* Form Screen */
-    #formScreen {
+    /* Input Screen – full screen with a centered form */
+    #inputScreen {
       background: #000;
       padding: 20px;
     }
-    #formScreen label {
-      margin-bottom: 10px;
-      display: block;
-    }
-    #formScreen input[type="date"] {
-      font-family: 'Press Start 2P', cursive;
-      font-size: 0.8em;
-      background: #000;
-      color: #0f0;
-      border: 2px solid #0f0;
-      padding: 10px;
-      width: 80%;
-      max-width: 300px;
+    #inputScreen h1 {
+      font-size: 2.5em;
       margin-bottom: 20px;
     }
-    
-    /* Animation Screen: Simulate a retro space fly-through */
+    #birthForm {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 20px;
+    }
+    #birthForm input[type="date"] {
+      width: 320px;  /* wide enough to show a full 4-digit year on desktop */
+      max-width: 90%;
+      font-size: 1.2em;
+      padding: 10px;
+      border: 2px solid #fff;
+      background: #111;
+      color: #fff;
+    }
+    #birthForm button {
+      font-size: 1.2em;
+      padding: 10px 20px;
+      background: #fff;
+      color: #000;
+      border: none;
+      cursor: pointer;
+      transition: background 0.3s;
+    }
+    #birthForm button:hover {
+      background: #ccc;
+    }
+    /* Animation Screen – a view from a Lagrange point */
     #animationScreen {
       background: #000;
-      position: relative;
       overflow: hidden;
     }
-    /* A pixelated starry background (replace the URL with your own pixel art if desired) */
-    .stars {
+    /* Full-screen starfield background */
+    .starfield {
       position: absolute;
-      width: 200%;
-      height: 200%;
-      background: url('https://i.imgur.com/ls6hO9F.png') repeat;
-      image-rendering: pixelated;
-      animation: scrollStars 10s linear infinite;
+      top: 0; left: 0;
+      width: 100%;
+      height: 100%;
+      background: url('https://i.imgur.com/2r9I3S6.jpg') repeat; /* Replace with your starfield image */
+      background-size: cover;
+      z-index: 1;
+      opacity: 0.8;
     }
-    @keyframes scrollStars {
-      from { transform: translateY(0); }
-      to { transform: translateY(-50%); }
-    }
-    
-    /* Earth & Moon Screen */
-    #earthMoonScreen {
-      background: #000;
-      display: none;
+    /* Scene container holds Earth & Moon */
+    .scene {
       position: relative;
-      justify-content: center;
-      align-items: center;
-      flex-direction: column;
+      width: 100%;
+      height: 100%;
+      z-index: 2;
     }
-    /* Simulated pixel Earth */
+    /* Earth – positioned in lower left */
     #earth {
-      width: 100px;
-      height: 100px;
-      border: 4px solid #0f0;
+      position: absolute;
+      bottom: 10%;
+      left: 10%;
+      width: 250px;
+      max-width: 30%;
+      /* A circular image or use your own asset */
       border-radius: 50%;
-      background: #001; /* dark blue */
+      box-shadow: 0 0 20px rgba(0, 100, 255, 0.8);
+    }
+    /* Moon – positioned in upper right */
+    #moon {
+      position: absolute;
+      top: 15%;
+      right: 10%;
+      width: 200px;
+      max-width: 25%;
+      transform-origin: center;
+    }
+    /* Moon cycle animation: one full rotation over 3 seconds, with a “stepped” easing to simulate a video-game style */
+    @keyframes moonCycle {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+    .rotate {
+      animation: moonCycle 3s steps(20) forwards;
+    }
+    /* Counter Overlay – displays the number of full moons lived */
+    #counterOverlay {
+      position: absolute;
+      bottom: 15%;
+      width: 100%;
+      text-align: center;
+      font-size: 2em;
+      z-index: 3;
+      opacity: 0;
+      transition: opacity 1s;
+    }
+    /* Share Button styling */
+    #shareButton {
       margin-top: 20px;
-      image-rendering: pixelated;
-    }
-    /* Moon image for the cycle (replace with your own pixel art if desired) */
-    #moonCycle {
-      width: 80px;
-      height: 80px;
-      background: url('https://i.imgur.com/AQvLRbg.png') center/cover no-repeat;
-      image-rendering: pixelated;
-    }
-    @keyframes rotateMoon {
-      0% { transform: rotate(0deg); }
-      100% { transform: rotate(360deg); }
-    }
-    .rotate { animation: rotateMoon 3s steps(12) linear; }
-    
-    /* Count Screen: Animated score with retro progress icons */
-    #countScreen {
-      background: #000;
-      display: none;
-      flex-direction: column;
-    }
-    #moonCount {
       font-size: 1.2em;
-      margin-bottom: 20px;
-    }
-    #progressIcons {
-      display: flex;
-      justify-content: center;
-      flex-wrap: wrap;
-      gap: 5px;
-      margin-top: 20px;
-    }
-    .moon-icon { font-size: 1em; }
-    
-    /* Share Button Styling */
-    #shareBtn {
-      margin-top: 20px;
-      background: #222;
-      color: #0f0;
-      border: 2px solid #0f0;
       padding: 10px 20px;
-      cursor: pointer;
-      font-size: 0.8em;
-      transition: background 0.2s;
-    }
-    #shareBtn:hover {
-      background: #0f0;
+      background: #fff;
       color: #000;
+      border: none;
+      cursor: pointer;
+      display: none;
+      z-index: 3;
     }
   </style>
 </head>
 <body>
-  <!-- Title Screen -->
-  <div id="titleScreen" class="screen active">
-    <h1>MOON LIFE JOURNEY</h1>
-    <button id="startBtn" class="nes-button">PRESS START</button>
-  </div>
-  
-  <!-- Form Screen -->
-  <div id="formScreen" class="screen">
-    <h2>ENTER YOUR BIRTHDATE</h2>
+  <!-- Input Screen -->
+  <div id="inputScreen" class="screen active">
+    <h1>Moon Life Journey</h1>
     <form id="birthForm">
-      <label for="birthdate">Birth Date:</label>
       <input type="date" id="birthdate" required />
-      <br>
-      <button type="submit" class="nes-button">CALCULATE</button>
+      <button type="submit">Calculate My Moons</button>
     </form>
   </div>
-  
-  <!-- Animation Screen: Retro space fly-through -->
+
+  <!-- Animation Screen -->
   <div id="animationScreen" class="screen">
-    <div class="stars"></div>
-    <h2 style="z-index: 2;">FLYING THROUGH SPACE...</h2>
+    <div class="starfield"></div>
+    <div class="scene">
+      <!-- Replace these image URLs with your own high‑quality assets if desired -->
+      <img id="earth" src="https://i.imgur.com/4QfK4tG.png" alt="Earth" />
+      <img id="moon" src="https://i.imgur.com/AQvLRbg.png" alt="Moon" />
+    </div>
+    <div id="counterOverlay"></div>
+    <button id="shareButton">Share Your Journey</button>
   </div>
-  
-  <!-- Earth & Moon Screen: Show full view of Earth and the Moon -->
-  <div id="earthMoonScreen" class="screen">
-    <div id="moonCycle"></div>
-    <div id="earth"></div>
-  </div>
-  
-  <!-- Count Screen: Display the number of moons and progress icons -->
-  <div id="countScreen" class="screen">
-    <div id="moonCount"></div>
-    <div id="progressIcons"></div>
-    <button id="shareBtn" style="display: none;">SHARE YOUR JOURNEY</button>
-  </div>
-  
+
   <script>
-    // Set maximum date for birthdate input to today
-    document.getElementById('birthdate').max = new Date().toISOString().split("T")[0];
-    
-    // Average lunar month (synodic month) in days
-    const lunarMonth = 29.53059;
+    // Constants
+    const lunarMonth = 29.53059; // days per lunar cycle
     let fullMoonsLived = 0;
-    let nextMilestone = 0;
     
-    // Screen elements
-    const titleScreen = document.getElementById('titleScreen');
-    const formScreen = document.getElementById('formScreen');
+    // Get elements
+    const inputScreen = document.getElementById('inputScreen');
     const animationScreen = document.getElementById('animationScreen');
-    const earthMoonScreen = document.getElementById('earthMoonScreen');
-    const countScreen = document.getElementById('countScreen');
-    
-    // Title Screen: Press Start
-    document.getElementById('startBtn').addEventListener('click', function() {
-      titleScreen.classList.remove('active');
-      formScreen.classList.add('active');
-    });
-    
-    // Form submission: calculate lunar cycles
-    document.getElementById('birthForm').addEventListener('submit', function(e) {
+    const birthForm = document.getElementById('birthForm');
+    const birthdateInput = document.getElementById('birthdate');
+    const moonEl = document.getElementById('moon');
+    const counterOverlay = document.getElementById('counterOverlay');
+    const shareButton = document.getElementById('shareButton');
+
+    // Set max attribute on date input to today's date
+    birthdateInput.max = new Date().toISOString().split("T")[0];
+
+    // On form submission, compute full moons and transition to animation screen
+    birthForm.addEventListener('submit', function(e) {
       e.preventDefault();
-      const birthDateValue = document.getElementById('birthdate').value;
-      if (!birthDateValue) return;
-      const birthDate = new Date(birthDateValue);
+      const birthDateStr = birthdateInput.value;
+      if (!birthDateStr) return;
+      const birthDate = new Date(birthDateStr);
       const currentDate = new Date();
       const daysLived = (currentDate - birthDate) / (1000 * 60 * 60 * 24);
-      const moonsLived = daysLived / lunarMonth;
-      fullMoonsLived = Math.floor(moonsLived);
-      
-      // Milestone: if fewer than 10 moons, milestone = 10; otherwise, next multiple of 100.
-      nextMilestone = fullMoonsLived < 10 ? 10 : Math.ceil(fullMoonsLived / 100) * 100;
+      fullMoonsLived = Math.floor(daysLived / lunarMonth);
       
       // Transition to the animation screen
-      formScreen.classList.remove('active');
+      inputScreen.classList.remove('active');
       animationScreen.classList.add('active');
       
-      // After a 3-second "fly-through", transition to Earth & Moon screen
+      // Start the moon cycle animation
+      moonEl.classList.add('rotate');
+      
+      // When the moon cycle animation finishes (3 seconds), start the counter overlay
       setTimeout(() => {
-        animationScreen.classList.remove('active');
-        earthMoonScreen.classList.add('active');
-        
-        // Start the moon cycle animation (a full rotation over 3 seconds with retro “steppy” rotation)
-        const moonCycle = document.getElementById('moonCycle');
-        moonCycle.classList.add('rotate');
-        setTimeout(() => {
-          // End moon cycle and move to the counting screen
-          moonCycle.classList.remove('rotate');
-          earthMoonScreen.classList.remove('active');
-          countScreen.classList.add('active');
-          startCountAnimation();
-        }, 3000);
+        animateCounter(fullMoonsLived, 4000);
       }, 3000);
     });
-    
-    // Count animation: speed up the count to the current lunar cycle number,
-    // and add a moon icon for each 10% of the milestone reached.
-    function startCountAnimation() {
-      const moonCountElem = document.getElementById('moonCount');
-      const progressIconsElem = document.getElementById('progressIcons');
-      let currentCount = 0;
-      const duration = 4000; // count animation duration (in milliseconds)
-      const startTime = Date.now();
-      const thresholdIncrement = nextMilestone / 10;
-      let iconsAdded = 0;
+
+    // Animate the counter overlay from 0 to fullMoonsLived over the given duration (in ms)
+    function animateCounter(targetValue, duration) {
+      let start = null;
+      counterOverlay.style.opacity = 1;
       
-      function updateCount() {
-        const elapsed = Date.now() - startTime;
-        let progress = elapsed / duration;
-        if (progress > 1) progress = 1;
-        currentCount = Math.floor(progress * fullMoonsLived);
-        moonCountElem.innerText = currentCount + " FULL MOONS LIVED";
-        
-        // Every time a new 10% threshold is reached, add a retro moon icon.
-        let expectedIcons = Math.floor(currentCount / thresholdIncrement);
-        if (expectedIcons > iconsAdded) {
-          for (let i = iconsAdded; i < expectedIcons; i++) {
-            let icon = document.createElement('span');
-            icon.className = 'moon-icon';
-            icon.innerText = '🌕';
-            progressIconsElem.appendChild(icon);
-          }
-          iconsAdded = expectedIcons;
-        }
-        
-        if (progress < 1) {
-          requestAnimationFrame(updateCount);
+      function step(timestamp) {
+        if (!start) start = timestamp;
+        const progress = timestamp - start;
+        const current = Math.floor((progress / duration) * targetValue);
+        counterOverlay.innerText = current + " FULL MOONS LIVED";
+        if (progress < duration) {
+          window.requestAnimationFrame(step);
         } else {
-          // Final update and display the share button
-          moonCountElem.innerText = fullMoonsLived + " FULL MOONS LIVED";
-          document.getElementById('shareBtn').style.display = 'inline-block';
+          counterOverlay.innerText = targetValue + " FULL MOONS LIVED";
+          shareButton.style.display = 'block';
         }
       }
-      requestAnimationFrame(updateCount);
+      window.requestAnimationFrame(step);
     }
     
-    // Share button: use Web Share API or copy URL to clipboard as fallback
-    document.getElementById('shareBtn').addEventListener('click', function() {
+    // Share button functionality (using Web Share API if available, with fallback)
+    shareButton.addEventListener('click', function() {
       const shareData = {
         title: "My Moon Life Journey",
-        text: "I've lived " + fullMoonsLived + " full moons! Check out your own retro lunar journey!",
+        text: "I've lived " + fullMoonsLived + " full moons so far!",
         url: window.location.href
       };
       if (navigator.share) {
-        navigator.share(shareData)
-          .then(() => console.log("Shared successfully"))
-          .catch((error) => console.error("Error sharing", error));
+        navigator.share(shareData).catch(err => console.error("Error sharing:", err));
       } else {
+        // Fallback: copy to clipboard
         copyToClipboard(window.location.href);
         alert("Link copied to clipboard!");
       }
     });
-    
+
+    // Helper: copy text to clipboard
     function copyToClipboard(text) {
       const tempInput = document.createElement("input");
       tempInput.style.position = "absolute";
