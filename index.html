@@ -18,8 +18,7 @@
     /* Input Screen */
     #inputScreen {
       position: absolute;
-      top: 0;
-      left: 0;
+      top: 0; left: 0;
       width: 100%;
       height: 100%;
       background: #000;
@@ -117,7 +116,7 @@
   <!-- Full-screen Canvas -->
   <canvas id="sceneCanvas"></canvas>
 
-  <!-- Overlay for counter, fast-forward play button, milestone info, and share button -->
+  <!-- Overlay for counter, fast-forward button, milestone info, and share button -->
   <div id="overlay">
     <div id="counterOverlay"></div>
     <button id="playButton">Fast Forward</button>
@@ -127,14 +126,28 @@
 
   <script>
     /************* GLOBAL VARIABLES & SETUP *************/
-    const lunarMonth = 29.53059; // days per lunar cycle
-    let fullMoonsLived = 0;
-    let phase = "idle"; // possible phases: "slow", "waiting", "fast", "done"
+    const lunarMonth = 29.53059; // average days per lunar cycle
+    let totalCycles = 0;        // total cycles as a floating-point value
+    let fullMoonsLived = 0;     // integer part (completed cycles)
+    let currentPhaseFraction = 0; // fraction into the current cycle
+    // Phases: "slow" (show one cycle slowly), "waiting" (pause and show fast-forward button),
+    // "fast" (animate additional cycles), "done" (final state)
+    let phase = "idle";
+    // For timing:
     let slowStartTime = null;
     let fastStartTime = null;
-    const slowDuration = 10000; // 10 seconds for the slow spin phase
+    const slowDuration = 10000; // 10 seconds for the slow cycle phase
     const fastDuration = 4000;  // 4 seconds for the fast-forward phase
-    let currentRotationAngle = 0;
+    // This variable represents the cumulative cycle count during animation.
+    // During slow phase, it goes from 0 to 1.
+    // During fast phase, it goes from 1 to (fullMoonsLived + currentPhaseFraction).
+    let currentCycleValue = 0;
+    
+    // For starfield: fewer stars (e.g. 100) and each star drifts slowly.
+    const numStars = 100;
+    const stars = [];
+    // Use a modest speed (0.005 px per ms).
+    const starSpeedRange = 0.005;
     
     // Get DOM elements
     const inputScreen = document.getElementById('inputScreen');
@@ -147,32 +160,48 @@
     const milestoneOverlay = document.getElementById('milestoneOverlay');
     const shareButton = document.getElementById('shareButton');
     
-    // Set max date for birthdate input to today
+    // Set max date for birthdate input to today.
     birthdateInput.max = new Date().toISOString().split("T")[0];
     
-    // Setup canvas dimensions and update moon parameters on resize
+    // Canvas setup and moon parameters.
+    const moon = { x: 0, y: 0, radius: 0 };
     function resizeCanvas() {
       sceneCanvas.width = window.innerWidth;
       sceneCanvas.height = window.innerHeight;
-      // Update moon object: center and large (fills most of the view)
+      // Moon: centered and large (occupies about 90% of the smaller dimension)
       moon.x = sceneCanvas.width / 2;
       moon.y = sceneCanvas.height / 2;
       moon.radius = Math.min(sceneCanvas.width, sceneCanvas.height) * 0.45;
+      // Reinitialize star positions to cover entire canvas.
+      initStars();
     }
     window.addEventListener('resize', resizeCanvas);
     
-    /************* STARFIELD (Procedural Background) *************/
-    const stars = [];
-    const numStars = 300;
+    /************* STARFIELD *************/
     function initStars() {
       stars.length = 0;
       for (let i = 0; i < numStars; i++) {
         stars.push({
           x: Math.random() * sceneCanvas.width,
           y: Math.random() * sceneCanvas.height,
-          radius: Math.random() * 1.5,
-          alpha: Math.random() * 0.8 + 0.2
+          radius: Math.random() * 1.2 + 0.5,
+          alpha: Math.random() * 0.6 + 0.4,
+          // Random drift velocity between -starSpeedRange and starSpeedRange.
+          vx: (Math.random() - 0.5) * starSpeedRange,
+          vy: (Math.random() - 0.5) * starSpeedRange
         });
+      }
+    }
+    function updateStars(delta) {
+      for (let star of stars) {
+        star.x += star.vx * delta;
+        star.y += star.vy * delta;
+        // Wrap around horizontally
+        if (star.x < 0) star.x += sceneCanvas.width;
+        if (star.x > sceneCanvas.width) star.x -= sceneCanvas.width;
+        // Wrap around vertically
+        if (star.y < 0) star.y += sceneCanvas.height;
+        if (star.y > sceneCanvas.height) star.y -= sceneCanvas.height;
       }
     }
     function drawStars() {
@@ -184,30 +213,44 @@
       }
     }
     
-    /************* MOON OBJECT & DRAWING *************/
-    const moon = { x: 0, y: 0, radius: 0 };
-    // Draw the moon using a radial gradient and fixed crater positions for consistency
-    function drawMoon(angle) {
+    /************* DRAWING THE MOON PHASE *************/
+    // This function draws the moon with the given phase.
+    // phase ∈ [0,1]: 0 = new moon (dark), 0.5 = full moon, 1 = new moon.
+    function drawMoonPhase(x, y, radius, phase) {
       ctx.save();
-      ctx.translate(moon.x, moon.y);
-      ctx.rotate(angle);
-      const grad = ctx.createRadialGradient(
-        -moon.radius * 0.3, -moon.radius * 0.3, moon.radius * 0.1,
-         0, 0, moon.radius
-      );
-      grad.addColorStop(0, '#e0e0e0');
-      grad.addColorStop(1, '#777777');
+      ctx.translate(x, y);
+      // Draw the lit portion of the moon.
       ctx.beginPath();
-      ctx.arc(0, 0, moon.radius, 0, 2 * Math.PI);
-      ctx.fillStyle = grad;
+      ctx.arc(0, 0, radius, 0, 2 * Math.PI);
+      ctx.fillStyle = "#e0e0e0";
       ctx.fill();
-      ctx.fillStyle = 'rgba(0,0,0,0.15)';
+      
+      // Use composite operation to “cut out” the shadow.
+      ctx.globalCompositeOperation = "destination-out";
+      ctx.beginPath();
+      // Compute offset:
+      // At phase = 0 (new moon), offset = radius (completely dark).
+      // At phase = 0.5 (full moon), offset = 0.
+      // At phase = 1, offset = radius again.
+      let offset = radius * (1 - 2 * Math.abs(phase - 0.5));
+      if (phase < 0.5) {
+        // Waxing: subtract a circle offset to the right.
+        ctx.arc(offset, 0, radius, 0, 2 * Math.PI);
+      } else {
+        // Waning: subtract a circle offset to the left.
+        ctx.arc(-offset, 0, radius, 0, 2 * Math.PI);
+      }
+      ctx.fill();
+      ctx.globalCompositeOperation = "source-over";
+      
+      // (Optional) Draw subtle crater details over the lit portion.
+      ctx.fillStyle = "rgba(0,0,0,0.15)";
       const craterPositions = [
-        { x: -moon.radius * 0.4, y: -moon.radius * 0.2, r: moon.radius * 0.08 },
-        { x: moon.radius * 0.3, y: -moon.radius * 0.3, r: moon.radius * 0.06 },
-        { x: -moon.radius * 0.1, y: moon.radius * 0.4, r: moon.radius * 0.07 },
-        { x: moon.radius * 0.2, y: moon.radius * 0.2, r: moon.radius * 0.05 },
-        { x: -moon.radius * 0.3, y: moon.radius * 0.3, r: moon.radius * 0.06 }
+        { x: -radius * 0.4, y: -radius * 0.2, r: radius * 0.08 },
+        { x: radius * 0.3, y: -radius * 0.3, r: radius * 0.06 },
+        { x: -radius * 0.1, y: radius * 0.4, r: radius * 0.07 },
+        { x: radius * 0.2, y: radius * 0.2, r: radius * 0.05 },
+        { x: -radius * 0.3, y: radius * 0.3, r: radius * 0.06 }
       ];
       craterPositions.forEach(pos => {
         ctx.beginPath();
@@ -218,53 +261,57 @@
     }
     
     /************* ANIMATION LOOP *************/
-    // This loop handles both the slow (human speed) phase and the fast-forward phase.
+    let lastTimestamp = null;
     function animate(timestamp) {
+      if (!lastTimestamp) lastTimestamp = timestamp;
+      let delta = timestamp - lastTimestamp;
+      lastTimestamp = timestamp;
+      
+      // Clear the canvas.
       ctx.clearRect(0, 0, sceneCanvas.width, sceneCanvas.height);
+      // Update and draw stars.
+      updateStars(delta);
       drawStars();
       
+      // Update the moon cycle value based on phase.
       if (phase === "slow") {
         if (!slowStartTime) slowStartTime = timestamp;
         let elapsed = timestamp - slowStartTime;
-        if (elapsed < slowDuration) {
-          // Rotate slowly: one full revolution in 10 seconds.
-          currentRotationAngle = (elapsed / slowDuration) * 2 * Math.PI;
-          updateCounter(1);
-        } else {
-          // End slow phase: set rotation to 0 (starting position) and update counter.
-          currentRotationAngle = 0;
+        // During slow phase, we show one full cycle (0→1).
+        currentCycleValue = Math.min(elapsed / slowDuration, 1);
+        updateCounter(1);
+        if (elapsed >= slowDuration) {
+          // Slow phase complete; start waiting.
+          currentCycleValue = 1;
           phase = "waiting";
           updateCounter(1);
-          // Show the fast-forward (play) button.
           playButton.style.display = "inline-block";
         }
       } else if (phase === "fast") {
+        if (!fastStartTime) fastStartTime = timestamp;
         let elapsed = timestamp - fastStartTime;
-        if (elapsed < fastDuration) {
-          // Use an ease-in-out easing for a smooth fast-forward.
-          let t = elapsed / fastDuration;
-          t = t < 0.5 ? 2*t*t : -1+(4-2*t)*t;
-          // The additional revolutions required: total full moons minus the one from slow phase.
-          let additionalRevs = t * (fullMoonsLived - 1);
-          // For visual effect, show the current revolution's fractional rotation.
-          currentRotationAngle = (additionalRevs % 1) * 2 * Math.PI;
-          updateCounter(1 + Math.floor(additionalRevs));
-        } else {
-          // Fast-forward phase complete.
-          currentRotationAngle = 0;
-          updateCounter(fullMoonsLived);
+        // Target cycle value: from 1 to (fullMoonsLived + currentPhaseFraction).
+        let targetCycleValue = 1 + (elapsed / fastDuration) * ((fullMoonsLived + currentPhaseFraction) - 1);
+        currentCycleValue = targetCycleValue;
+        updateCounter(Math.floor(currentCycleValue));
+        if (elapsed >= fastDuration) {
+          currentCycleValue = fullMoonsLived + currentPhaseFraction;
           phase = "done";
-          // Fade in milestone overlay.
+          updateCounter(Math.floor(currentCycleValue));
+          // Show milestone overlay.
+          let nextMilestone = (fullMoonsLived < 10) ? 10 : Math.ceil(fullMoonsLived / 100) * 100;
+          let remaining = nextMilestone - fullMoonsLived;
+          milestoneOverlay.innerHTML = `Your next milestone is <strong>${nextMilestone}</strong> full moons.<br>You have <strong>${remaining}</strong> more to go.`;
           milestoneOverlay.style.opacity = 1;
-          let milestone = (fullMoonsLived < 10) ? 10 : Math.ceil(fullMoonsLived / 100) * 100;
-          let remaining = milestone - fullMoonsLived;
-          milestoneOverlay.innerHTML = `Your next milestone is <strong>${milestone}</strong> full moons.<br>
-                                        You have <strong>${remaining}</strong> more to go.`;
           shareButton.style.display = "inline-block";
         }
       }
+      // For "waiting" or "done" phases, currentCycleValue remains fixed.
       
-      drawMoon(currentRotationAngle);
+      // Compute the phase to draw: simply the fractional part.
+      let phaseToDraw = currentCycleValue % 1;
+      drawMoonPhase(moon.x, moon.y, moon.radius, phaseToDraw);
+      
       requestAnimationFrame(animate);
     }
     
@@ -282,8 +329,13 @@
       const birthDate = new Date(birthDateStr);
       const currentDate = new Date();
       const daysLived = (currentDate - birthDate) / (1000 * 60 * 60 * 24);
-      fullMoonsLived = Math.floor(daysLived / lunarMonth);
-      if (fullMoonsLived < 1) fullMoonsLived = 1; // Ensure at least one full moon.
+      totalCycles = daysLived / lunarMonth;
+      fullMoonsLived = Math.floor(totalCycles);
+      currentPhaseFraction = totalCycles - fullMoonsLived;
+      if (fullMoonsLived < 1) {
+        fullMoonsLived = 1;
+        currentPhaseFraction = 0;
+      }
       // Hide input screen; show canvas and overlay.
       inputScreen.style.display = "none";
       sceneCanvas.style.display = "block";
@@ -291,6 +343,8 @@
       resizeCanvas();
       phase = "slow";
       slowStartTime = null;
+      fastStartTime = null;
+      lastTimestamp = null;
       requestAnimationFrame(animate);
     });
     
