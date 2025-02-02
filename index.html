@@ -1,104 +1,159 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Moon Life Calculator</title>
-  <!-- Bootstrap CSS for mobile friendly styling -->
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <!-- Bootstrap CSS for responsiveness -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet" />
   <style>
-    /* Simple animation styles for the progress bar and number display */
-    .progress-bar {
-      transition: width 2s ease;
+    /* Base background: a deep space theme */
+    body {
+      background: radial-gradient(ellipse at bottom, #1b2735 0%, #090a0f 100%);
+      color: #fff;
+      font-family: 'Arial', sans-serif;
+      overflow-x: hidden;
+      margin: 0;
+      padding: 0;
     }
+    /* Animated starry background overlay */
+    .stars {
+      position: fixed;
+      width: 200%;
+      height: 200%;
+      top: -50%;
+      left: -50%;
+      background: transparent url('https://s3-us-west-2.amazonaws.com/s.cdpn.io/1231630/stars.png') repeat;
+      animation: moveStars 100s linear infinite;
+      z-index: -2;
+    }
+    @keyframes moveStars {
+      from { transform: translateX(0) translateY(0); }
+      to { transform: translateX(100px) translateY(100px); }
+    }
+    /* A glowing, spinning moon graphic */
+    .moon {
+      width: 150px;
+      height: 150px;
+      border-radius: 50%;
+      margin: 0 auto;
+      background: url('https://s3-us-west-2.amazonaws.com/s.cdpn.io/1231630/moon.png') center/cover no-repeat;
+      box-shadow: 0 0 30px 5px rgba(255, 255, 255, 0.2);
+      animation: spin 12s linear infinite;
+    }
+    @keyframes spin {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+    /* Styling for the animated number display */
     .number-animation {
       font-size: 2em;
       font-weight: bold;
+      text-align: center;
+      margin-top: 20px;
+    }
+    /* Share button appears after animation */
+    .share-btn {
+      margin-top: 30px;
+      display: none;
+    }
+    /* Form container with a slight translucent background */
+    .form-container {
+      background: rgba(0, 0, 0, 0.5);
+      padding: 20px;
+      border-radius: 8px;
+    }
+    /* Enhance date input for mobile usability */
+    input[type="date"] {
+      font-size: 1.2em;
+      padding: 10px;
     }
   </style>
 </head>
 <body>
+  <div class="stars"></div>
   <div class="container py-5">
-    <h1 class="mb-4">Moon Life Calculator</h1>
-    <!-- Mobile-friendly form for birthdate input -->
-    <form id="birthForm">
-      <div class="mb-3">
-        <label for="birthdate" class="form-label">Enter your Birth Date:</label>
-        <input type="date" class="form-control" id="birthdate" required>
-      </div>
-      <button type="submit" class="btn btn-primary">Calculate</button>
-    </form>
-    
-    <!-- Results Section (hidden until calculation is done) -->
+    <!-- Input form -->
+    <div class="form-container mx-auto p-4" style="max-width: 500px;">
+      <h1 class="text-center mb-4">Moon Life Calculator</h1>
+      <form id="birthForm">
+        <div class="mb-3">
+          <label for="birthdate" class="form-label">Enter your Birth Date:</label>
+          <!-- Set max to today's date so mobile pickers start at the current year -->
+          <input type="date" class="form-control" id="birthdate" max="" required />
+        </div>
+        <button type="submit" class="btn btn-primary w-100">Calculate</button>
+      </form>
+    </div>
+
+    <!-- Results Section -->
     <div id="result" class="mt-5" style="display: none;">
-      <h2>Your Lunar Journey</h2>
-      <!-- Animated number of full moons lived -->
-      <p class="number-animation" id="moonCount"></p>
-      <!-- Progress bar showing how far along you are toward the next milestone -->
+      <!-- Spinning moon graphic -->
+      <div class="moon mb-4"></div>
+      <!-- Animated count of full moons lived -->
+      <div class="number-animation" id="moonCount"></div>
+      <!-- Progress bar toward the next milestone -->
       <div class="progress my-3" style="height: 30px;">
-        <div id="moonProgress" class="progress-bar bg-success" role="progressbar" style="width: 0%;" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>
+        <div id="moonProgress" class="progress-bar bg-info" role="progressbar" style="width: 0%;" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>
       </div>
-      <p id="milestoneMessage"></p>
-      <!-- Table with milestone lunar cycle dates -->
+      <p id="milestoneMessage" class="text-center"></p>
+      <!-- Table showing the lunar cycle milestone dates -->
       <div id="milestoneDates" class="mt-3"></div>
+      <!-- Share button -->
+      <div class="text-center">
+        <button id="shareBtn" class="btn btn-success share-btn">Share Your Lunar Journey</button>
+      </div>
     </div>
   </div>
 
   <script>
-    // Average lunar month length in days (synodic month)
+    // Set the max attribute for the date input to today's date
+    document.getElementById('birthdate').max = new Date().toISOString().split("T")[0];
+
+    // Average length of a lunar month in days
     const lunarMonth = 29.53059;
 
     document.getElementById('birthForm').addEventListener('submit', function(e) {
       e.preventDefault();
       const birthDateValue = document.getElementById('birthdate').value;
       if (!birthDateValue) return;
-      
+
       const birthDate = new Date(birthDateValue);
       const currentDate = new Date();
-      
-      // Calculate the number of days lived
+
+      // Calculate days lived and full moons (complete cycles)
       const daysLived = (currentDate - birthDate) / (1000 * 60 * 60 * 24);
-      // Calculate the number of full moons (lunations) lived so far
       const moonsLived = daysLived / lunarMonth;
       const fullMoonsLived = Math.floor(moonsLived);
-      
-      // Determine the next milestone based on current count
-      let nextMilestone;
-      if (fullMoonsLived < 10) {
-        nextMilestone = 10;
-      } else if (fullMoonsLived < 100) {
-        nextMilestone = 100;
-      } else if (fullMoonsLived < 250) {
-        nextMilestone = 250;
-      } else if (fullMoonsLived < 750) {
-        nextMilestone = 750;
-      } else {
-        // For higher numbers, you might choose the next milestone as the next multiple of 500
-        nextMilestone = Math.ceil(fullMoonsLived / 500) * 500;
-      }
-      
+
+      // Determine next milestone:
+      // If fewer than 10, use 10; otherwise, milestones are every 100.
+      let nextMilestone = fullMoonsLived < 10 ? 10 : Math.ceil(fullMoonsLived / 100) * 100;
       const moonsRemaining = nextMilestone - fullMoonsLived;
-      
-      // Calculate the start and end dates of the milestone lunar cycle.
-      // The "nth" lunar cycle starts on birthdate + (n-1)*lunarMonth and ends on birthdate + n*lunarMonth.
+
+      // Calculate the start and end dates of the milestone lunar cycle
       const milestoneStart = new Date(birthDate.getTime() + (nextMilestone - 1) * lunarMonth * 24 * 60 * 60 * 1000);
-      const milestoneEnd = new Date(birthDate.getTime() + nextMilestone * lunarMonth * 24 * 60 * 60 * 1000);
-      
-      // Animate the moon count display
-      animateNumber("moonCount", fullMoonsLived, 2000);
-      
-      // Animate the progress bar (using the milestone as the maximum)
+      const milestoneEnd   = new Date(birthDate.getTime() + nextMilestone * lunarMonth * 24 * 60 * 60 * 1000);
+
+      // Animate the number of full moons lived
+      animateNumber("moonCount", fullMoonsLived, 2000, function() {
+        // Once finished, show the share button.
+        document.getElementById("shareBtn").style.display = "inline-block";
+      });
+
+      // Animate progress bar toward the milestone
       const progressPercent = (fullMoonsLived / nextMilestone) * 100;
-      document.getElementById("moonProgress").style.width = progressPercent + "%";
-      document.getElementById("moonProgress").setAttribute("aria-valuenow", fullMoonsLived);
-      
-      // Set milestone message and display the dates of that lunar cycle in a table
-      document.getElementById("milestoneMessage").innerHTML = 
-        "Your next milestone is " + nextMilestone + " full moons. " +
-        "You have " + moonsRemaining + " full moons left until then.";
-      
-      document.getElementById("milestoneDates").innerHTML = 
-        "<table class='table table-bordered'>" +
+      const progressBar = document.getElementById("moonProgress");
+      progressBar.style.width = progressPercent + "%";
+      progressBar.setAttribute("aria-valuenow", fullMoonsLived);
+
+      // Set milestone message and table of dates
+      document.getElementById("milestoneMessage").innerHTML =
+        "Your next milestone is <strong>" + nextMilestone + "</strong> full moons. " +
+        "You have <strong>" + moonsRemaining + "</strong> full moons left until then.";
+
+      document.getElementById("milestoneDates").innerHTML =
+        "<table class='table table-dark table-bordered'>" +
           "<thead><tr><th>Cycle</th><th>Start Date</th><th>End Date</th></tr></thead>" +
           "<tbody>" +
             "<tr>" +
@@ -108,27 +163,61 @@
             "</tr>" +
           "</tbody>" +
         "</table>";
-      
+
       // Reveal the results section
       document.getElementById("result").style.display = "block";
     });
 
-    // A simple function to animate a number counting up to the target value
-    function animateNumber(elementId, targetNumber, duration) {
+    // Simple function to animate a number (with callback on finish)
+    function animateNumber(elementId, targetNumber, duration, callback) {
       let current = 0;
-      const stepTime = 50; // milliseconds
+      const stepTime = 50;
       const steps = duration / stepTime;
       const increment = targetNumber / steps;
       const element = document.getElementById(elementId);
-      
+
       const interval = setInterval(function() {
         current += increment;
         if (current >= targetNumber) {
           current = targetNumber;
           clearInterval(interval);
+          if (callback) callback();
         }
         element.innerText = Math.floor(current) + " full moons lived so far";
       }, stepTime);
+    }
+
+    // Share button functionality (uses Web Share API if available)
+    document.getElementById("shareBtn").addEventListener("click", function() {
+      const shareData = {
+        title: "My Lunar Journey",
+        text: "I have lived " + document.getElementById("moonCount").innerText + ". Check out your own lunar journey!",
+        url: window.location.href
+      };
+
+      if (navigator.share) {
+        navigator.share(shareData).then(() => {
+          console.log("Shared successfully");
+        }).catch((error) => {
+          console.error("Error sharing", error);
+        });
+      } else {
+        // Fallback: copy the URL to clipboard
+        copyToClipboard(window.location.href);
+        alert("Link copied to clipboard!");
+      }
+    });
+
+    // Helper function to copy text to clipboard
+    function copyToClipboard(text) {
+      const tempInput = document.createElement("input");
+      tempInput.style.position = "absolute";
+      tempInput.style.left = "-1000px";
+      tempInput.value = text;
+      document.body.appendChild(tempInput);
+      tempInput.select();
+      document.execCommand("copy");
+      document.body.removeChild(tempInput);
     }
   </script>
 </body>
