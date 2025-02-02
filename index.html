@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Hyper-Realistic Moon Life Journey</title>
+  <title>Hyper-Realistic Moon Journey</title>
   <style>
     /* Reset and full-screen basics */
     * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -15,18 +15,20 @@
       font-family: Arial, sans-serif;
       color: #fff;
     }
-    /* Input Screen (centered form) */
+    /* Input Screen */
     #inputScreen {
       position: absolute;
-      top: 0; left: 0;
-      width: 100%; height: 100%;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
       background: #000;
       display: flex;
       flex-direction: column;
       justify-content: center;
       align-items: center;
-      text-align: center;
       z-index: 10;
+      text-align: center;
     }
     #inputScreen h1 {
       font-size: 2.5em;
@@ -35,11 +37,11 @@
     #birthForm {
       display: flex;
       flex-direction: column;
-      align-items: center;
       gap: 20px;
+      align-items: center;
     }
     #birthForm input[type="date"] {
-      width: 320px; /* wide enough to show a 4-digit year */
+      width: 320px; /* wide enough for a 4-digit year */
       max-width: 90%;
       font-size: 1.2em;
       padding: 10px;
@@ -59,21 +61,20 @@
     #birthForm button:hover {
       background: #ccc;
     }
-    /* Canvas covers full screen */
+    /* Canvas takes up the full screen */
     #sceneCanvas {
       position: absolute;
       top: 0;
       left: 0;
+      z-index: 5;
     }
-    /* Overlay for counter and share button */
+    /* Overlay for controls and info */
     #overlay {
       position: absolute;
-      bottom: 0;
-      left: 0;
+      bottom: 20px;
       width: 100%;
       text-align: center;
       z-index: 20;
-      pointer-events: none; /* allow canvas events underneath if needed */
     }
     #counterOverlay {
       font-size: 2em;
@@ -81,14 +82,14 @@
       opacity: 0;
       transition: opacity 1s;
     }
-    #progressIcons {
+    #milestoneOverlay {
+      font-size: 1.5em;
       margin-bottom: 10px;
+      opacity: 0;
+      transition: opacity 1s;
     }
-    .moon-icon {
-      font-size: 1.8em;
-      margin: 0 3px;
-    }
-    #shareButton {
+    /* Play (Fast Forward) and Share buttons */
+    #playButton, #shareButton {
       font-size: 1.2em;
       padding: 10px 20px;
       background: #fff;
@@ -96,7 +97,10 @@
       border: none;
       cursor: pointer;
       display: none;
-      pointer-events: auto;
+      margin: 5px;
+    }
+    #playButton:hover, #shareButton:hover {
+      background: #ccc;
     }
   </style>
 </head>
@@ -110,140 +114,67 @@
     </form>
   </div>
 
-  <!-- The Canvas for the animated scene -->
+  <!-- Full-screen Canvas -->
   <canvas id="sceneCanvas"></canvas>
 
-  <!-- HTML Overlay for counter and progress icons -->
+  <!-- Overlay for counter, buttons, and milestone info -->
   <div id="overlay">
     <div id="counterOverlay"></div>
-    <div id="progressIcons"></div>
+    <button id="playButton">Fast Forward</button>
+    <div id="milestoneOverlay"></div>
     <button id="shareButton">Share Your Journey</button>
   </div>
 
   <script>
-    /*********** GLOBAL VARIABLES ***********/
+    /************* GLOBAL VARIABLES & SETUP *************/
     const lunarMonth = 29.53059; // days per lunar cycle
     let fullMoonsLived = 0;
-    let milestone = 0; // next milestone (10 if <10, otherwise next multiple of 100)
-    
-    // Animation phase durations (in milliseconds)
-    const moonRotationDuration = 3000; // 3 seconds for moon rotation
-    const counterAnimationDuration = 4000; // 4 seconds for counter overlay
-    // Total animation duration for scene: moon rotation + counter animation
-    // (starfield and scene remain animated continuously)
-    
-    /*********** SETUP ELEMENTS ***********/
+    let milestone = 0;
+    let currentRevolution = 0; // how many revolutions have been completed (including slow spin)
+    let phase = "slow"; // phases: "slow", "waiting", "fast", "done"
+    let currentRotationAngle = 0; // in radians
+
+    // Get elements
     const inputScreen = document.getElementById('inputScreen');
     const birthForm = document.getElementById('birthForm');
     const birthdateInput = document.getElementById('birthdate');
     const sceneCanvas = document.getElementById('sceneCanvas');
-    const counterOverlay = document.getElementById('counterOverlay');
-    const progressIcons = document.getElementById('progressIcons');
-    const shareButton = document.getElementById('shareButton');
-    
-    // Set maximum date for date input to today
-    birthdateInput.max = new Date().toISOString().split("T")[0];
-    
-    // Setup canvas dimensions
     const ctx = sceneCanvas.getContext('2d');
+    const counterOverlay = document.getElementById('counterOverlay');
+    const playButton = document.getElementById('playButton');
+    const milestoneOverlay = document.getElementById('milestoneOverlay');
+    const shareButton = document.getElementById('shareButton');
+
+    // Set max date for input to today
+    birthdateInput.max = new Date().toISOString().split("T")[0];
+
+    // Set up canvas dimensions and update moon parameters on resize
     function resizeCanvas() {
       sceneCanvas.width = window.innerWidth;
       sceneCanvas.height = window.innerHeight;
+      // Update moon object to be centered and large
+      moon.x = sceneCanvas.width / 2;
+      moon.y = sceneCanvas.height / 2;
+      moon.radius = Math.min(sceneCanvas.width, sceneCanvas.height) * 0.45;
     }
-    resizeCanvas();
     window.addEventListener('resize', resizeCanvas);
-    
-    /*********** STARFIELD SETUP ***********/
-    // Create an array of stars with random positions and sizes
-    const stars = [];
-    const numStars = 500;
-    for (let i = 0; i < numStars; i++) {
-      stars.push({
-        x: Math.random() * window.innerWidth,
-        y: Math.random() * window.innerHeight,
-        radius: Math.random() * 1.5,
-        alpha: Math.random() * 0.8 + 0.2
-      });
-    }
-    
-    /*********** SCENE OBJECTS ***********/
-    // Earth properties (drawn as a circle with a radial gradient)
-    const earth = {
-      x: window.innerWidth * 0.2,
-      y: window.innerHeight * 0.8,
-      radius: Math.min(window.innerWidth, window.innerHeight) * 0.15
-    };
-    // Moon properties (positioned in upper right)
+
+    /************* MOON OBJECT & DRAWING *************/
+    // The moon will be drawn at the center
     const moon = {
-      x: window.innerWidth * 0.8,
-      y: window.innerHeight * 0.3,
-      radius: Math.min(window.innerWidth, window.innerHeight) * 0.1
+      x: 0,
+      y: 0,
+      radius: 0 // will be set on resize
     };
-    
-    /*********** ANIMATION LOOP ***********/
-    let animationStartTime = null;
-    function drawScene(timestamp) {
-      if (!animationStartTime) animationStartTime = timestamp;
-      const elapsed = timestamp - animationStartTime;
-      
-      // Clear canvas
-      ctx.clearRect(0, 0, sceneCanvas.width, sceneCanvas.height);
-      
-      // Draw starfield background
-      drawStars();
-      
-      // Draw Earth
-      drawEarth();
-      
-      // Draw Moon with rotation in the first phase
-      if (elapsed < moonRotationDuration) {
-        const angle = (elapsed / moonRotationDuration) * 2 * Math.PI; // full rotation (radians)
-        drawMoon(angle);
-      } else {
-        drawMoon(0); // no rotation after phase
-      }
-      
-      // Continue the animation loop
-      requestAnimationFrame(drawScene);
-    }
-    
-    function drawStars() {
-      // For each star, draw a circle
-      for (let star of stars) {
-        ctx.beginPath();
-        ctx.arc(star.x, star.y, star.radius, 0, 2 * Math.PI);
-        ctx.fillStyle = `rgba(255,255,255,${star.alpha})`;
-        ctx.fill();
-      }
-    }
-    
-    function drawEarth() {
-      const grad = ctx.createRadialGradient(
-        earth.x - earth.radius * 0.3, earth.y - earth.radius * 0.3, earth.radius * 0.2,
-        earth.x, earth.y, earth.radius
-      );
-      // Simulate deep blue with hints of light
-      grad.addColorStop(0, '#0a2e5a');
-      grad.addColorStop(1, '#001a33');
-      ctx.beginPath();
-      ctx.arc(earth.x, earth.y, earth.radius, 0, 2 * Math.PI);
-      ctx.fillStyle = grad;
-      ctx.fill();
-      // Optional: add a subtle glow
-      ctx.shadowColor = '#0a2e5a';
-      ctx.shadowBlur = 20;
-      ctx.fill();
-      ctx.shadowBlur = 0;
-    }
-    
-    function drawMoon(rotationAngle) {
-      // Save context state
+
+    // Draw the moon with a realistic radial gradient and subtle craters
+    function drawMoon(angle) {
       ctx.save();
       // Translate to moon center
       ctx.translate(moon.x, moon.y);
-      // Rotate the context by the desired angle
-      ctx.rotate(rotationAngle);
-      // Create a radial gradient for a realistic moon look
+      // Rotate by the given angle
+      ctx.rotate(angle);
+      // Create a radial gradient for a realistic look
       const grad = ctx.createRadialGradient(
         -moon.radius * 0.3, -moon.radius * 0.3, moon.radius * 0.1,
         0, 0, moon.radius
@@ -254,83 +185,129 @@
       ctx.arc(0, 0, moon.radius, 0, 2 * Math.PI);
       ctx.fillStyle = grad;
       ctx.fill();
-      // Optionally, simulate subtle craters with small darker circles
-      ctx.fillStyle = 'rgba(0,0,0,0.2)';
-      for (let i = 0; i < 5; i++) {
+      // Simulate subtle craters (random positions each frame for a natural feel)
+      ctx.fillStyle = 'rgba(0,0,0,0.15)';
+      for (let i = 0; i < 8; i++) {
         const cx = (Math.random() - 0.5) * moon.radius * 0.8;
         const cy = (Math.random() - 0.5) * moon.radius * 0.8;
-        const cr = Math.random() * moon.radius * 0.15;
+        const cr = Math.random() * moon.radius * 0.07;
         ctx.beginPath();
         ctx.arc(cx, cy, cr, 0, 2 * Math.PI);
         ctx.fill();
       }
-      // Restore context state
       ctx.restore();
     }
-    
-    /*********** OVERLAY / COUNTER ANIMATION ***********/
-    function animateCounter(targetValue, duration) {
-      let startTime = null;
-      const thresholdIncrement = targetValue < 10 ? 10/10 : (milestone / 10);
-      let iconsAdded = 0;
-      
-      function stepOverlay(timestamp) {
-        if (!startTime) startTime = timestamp;
-        const progress = timestamp - startTime;
-        const currentCount = Math.floor((progress / duration) * targetValue);
-        counterOverlay.innerText = currentCount + " FULL MOONS LIVED";
-        // Add a moon icon for every threshold crossed
-        const expectedIcons = Math.floor(currentCount / thresholdIncrement);
-        if (expectedIcons > iconsAdded) {
-          for (let i = iconsAdded; i < expectedIcons; i++) {
-            const span = document.createElement('span');
-            span.className = 'moon-icon';
-            span.innerText = '🌕';
-            progressIcons.appendChild(span);
-          }
-          iconsAdded = expectedIcons;
-        }
-        if (progress < duration) {
-          requestAnimationFrame(stepOverlay);
+
+    /************* ANIMATION LOOP *************/
+    let slowStartTime = null;
+    function drawScene(timestamp) {
+      ctx.clearRect(0, 0, sceneCanvas.width, sceneCanvas.height);
+
+      // For our hyper‑realistic background, draw a subtle starfield
+      drawStarfield();
+
+      // Draw only the moon (centered) with the current rotation angle
+      drawMoon(currentRotationAngle);
+
+      // Phase-dependent updates
+      if (phase === "slow") {
+        if (!slowStartTime) slowStartTime = timestamp;
+        let elapsed = timestamp - slowStartTime;
+        if (elapsed < 10000) { // 10 seconds for one revolution
+          currentRotationAngle = (elapsed / 10000) * 2 * Math.PI;
         } else {
-          counterOverlay.innerText = targetValue + " FULL MOONS LIVED";
-          shareButton.style.display = 'inline-block';
+          // End of slow spin; complete one revolution
+          currentRotationAngle = 0;
+          currentRevolution = 1;
+          phase = "waiting";
+          // Show the play (fast-forward) button
+          playButton.style.display = "inline-block";
+          counterOverlay.style.opacity = 1;
+          counterOverlay.innerText = currentRevolution + " FULL MOON" + (currentRevolution === 1 ? "" : "S") + " LIVED";
         }
       }
-      // Fade in the overlay text
-      counterOverlay.style.opacity = 1;
-      requestAnimationFrame(stepOverlay);
-    }
-    
-    /*********** FORM HANDLING & TRANSITIONS ***********/
-    birthForm.addEventListener('submit', function(e) {
-      e.preventDefault();
-      const birthDateStr = birthdateInput.value;
-      if (!birthDateStr) return;
-      const birthDate = new Date(birthDateStr);
-      const currentDate = new Date();
-      const daysLived = (currentDate - birthDate) / (1000 * 60 * 60 * 24);
-      fullMoonsLived = Math.floor(daysLived / lunarMonth);
-      
-      // Determine milestone: if <10, use 10; otherwise, next multiple of 100.
-      milestone = fullMoonsLived < 10 ? 10 : Math.ceil(fullMoonsLived / 100) * 100;
-      
-      // Hide the input screen and show the canvas and overlay
-      inputScreen.style.display = 'none';
-      sceneCanvas.style.display = 'block';
-      document.getElementById('overlay').style.display = 'block';
-      
-      // Start the canvas animation loop
-      animationStartTime = null;
+      // In "waiting" phase, do nothing; the moon remains static.
+      // In "fast" phase, the rotation is controlled by the fast-forward routine.
+      // In "done" phase, nothing changes.
+
       requestAnimationFrame(drawScene);
-      
-      // After the moon rotation phase, start the counter overlay animation
-      setTimeout(() => {
-        animateCounter(fullMoonsLived, counterAnimationDuration);
-      }, moonRotationDuration);
-    });
-    
-    /*********** SHARE BUTTON FUNCTIONALITY ***********/
+    }
+
+    // A simple starfield drawn with many small white dots
+    const stars = [];
+    const numStars = 300;
+    function initStars() {
+      stars.length = 0;
+      for (let i = 0; i < numStars; i++) {
+        stars.push({
+          x: Math.random() * sceneCanvas.width,
+          y: Math.random() * sceneCanvas.height,
+          radius: Math.random() * 1.5,
+          alpha: Math.random() * 0.8 + 0.2
+        });
+      }
+    }
+    function drawStarfield() {
+      for (let star of stars) {
+        ctx.beginPath();
+        ctx.arc(star.x, star.y, star.radius, 0, 2 * Math.PI);
+        ctx.fillStyle = `rgba(255,255,255,${star.alpha})`;
+        ctx.fill();
+      }
+    }
+
+    /************* FAST-FORWARD SPIN (Phase 3) *************/
+    // This function animates one fast-forward revolution.
+    function animateRevolution(duration) {
+      return new Promise((resolve) => {
+        let startTime = null;
+        function step(timestamp) {
+          if (!startTime) startTime = timestamp;
+          let progress = timestamp - startTime;
+          let angle = (progress / duration) * 2 * Math.PI;
+          currentRotationAngle = angle;
+          if (progress < duration) {
+            requestAnimationFrame(step);
+          } else {
+            // Complete the revolution
+            currentRotationAngle = 0;
+            resolve();
+          }
+        }
+        requestAnimationFrame(step);
+      });
+    }
+
+    // This async function runs the fast-forward sequence.
+    async function runFastForward() {
+      playButton.style.display = "none"; // hide the play button while animating
+      let remainingRevolutions = fullMoonsLived - currentRevolution;
+      for (let i = 0; i < remainingRevolutions; i++) {
+        // For the first fast-forward revolution, use 1 second; then use 0.1 sec for subsequent ones.
+        let duration = (i === 0) ? 1000 : 100;
+        await animateRevolution(duration);
+        currentRevolution++;
+        counterOverlay.innerText = currentRevolution + " FULL MOON" + (currentRevolution === 1 ? "" : "S") + " LIVED";
+      }
+      // When fast-forward is complete, move to the "done" phase.
+      phase = "done";
+      showMilestoneOverlay();
+    }
+
+    /************* MILESTONE & SHARE *************/
+    function showMilestoneOverlay() {
+      // Determine the next milestone: if fewer than 10, milestone = 10; otherwise, next multiple of 100.
+      milestone = (fullMoonsLived < 10) ? 10 : Math.ceil(fullMoonsLived / 100) * 100;
+      let moonsRemaining = milestone - fullMoonsLived;
+      milestoneOverlay.innerHTML = `Your next milestone is <strong>${milestone}</strong> full moons.<br>
+                                    You have <strong>${moonsRemaining}</strong> more to go.`;
+      // Fade in the milestone overlay
+      milestoneOverlay.style.opacity = 1;
+      // Show the share button
+      shareButton.style.display = "inline-block";
+    }
+
+    // Share button functionality
     shareButton.addEventListener('click', function() {
       const shareData = {
         title: "My Moon Life Journey",
@@ -344,7 +321,6 @@
         alert("Link copied to clipboard!");
       }
     });
-    
     function copyToClipboard(text) {
       const tempInput = document.createElement("input");
       tempInput.style.position = "absolute";
@@ -355,6 +331,36 @@
       document.execCommand("copy");
       document.body.removeChild(tempInput);
     }
+
+    /************* FORM HANDLING & INIT *************/
+    birthForm.addEventListener('submit', function(e) {
+      e.preventDefault();
+      const birthDateStr = birthdateInput.value;
+      if (!birthDateStr) return;
+      const birthDate = new Date(birthDateStr);
+      const currentDate = new Date();
+      const daysLived = (currentDate - birthDate) / (1000 * 60 * 60 * 24);
+      fullMoonsLived = Math.floor(daysLived / lunarMonth);
+      if (fullMoonsLived < 1) fullMoonsLived = 1; // Ensure at least one revolution
+      
+      // Hide the input screen and initialize canvas
+      inputScreen.style.display = "none";
+      sceneCanvas.style.display = "block";
+      initStars();
+      resizeCanvas();
+      requestAnimationFrame(drawScene);
+    });
+
+    // When the play button is clicked, begin the fast-forward phase.
+    playButton.addEventListener('click', function() {
+      if (phase === "waiting") {
+        phase = "fast";
+        runFastForward();
+      }
+    });
+
+    // Start the animation loop (the slow phase will run until 10 sec have elapsed)
+    requestAnimationFrame(drawScene);
   </script>
 </body>
 </html>
