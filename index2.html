@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Moon Phase Journey</title>
+<title>Moon Phases Since Birth</title>
 <style>
   html, body {
     margin: 0; padding: 0;
@@ -12,7 +12,7 @@
     overflow: hidden;
   }
   /* -------------------------
-     INITIAL FORM STYLES
+     INPUT SCREEN
      ------------------------- */
   #input-screen {
     position: absolute;
@@ -28,7 +28,7 @@
   #birthdate-input {
     padding: 10px;
     font-size: 18px;
-    width: 250px; /* wide enough for full 4-digit year */
+    width: 250px;
     margin-bottom: 10px;
   }
   #start-button {
@@ -40,6 +40,7 @@
     border: none;
     border-radius: 5px;
   }
+
   /* -------------------------
      CANVAS
      ------------------------- */
@@ -50,8 +51,9 @@
     display: none; /* hidden at first */
     background: #000;
   }
+
   /* -------------------------
-     OVERLAYS & BUTTONS
+     INFO PANEL
      ------------------------- */
   #info-panel {
     position: absolute;
@@ -67,19 +69,25 @@
     margin: 0 0 5px 0;
     font-size: 22px;
   }
-  #fastForwardMilestoneButton {
+
+  /* -------------------------
+     NEXT MILESTONE BUTTON
+     ------------------------- */
+  #next-milestone-btn {
     position: absolute;
-    bottom: 20px; right: 20px;
-    padding: 10px 20px;
-    font-size: 16px;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    padding: 15px 30px;
+    font-size: 20px;
     cursor: pointer;
-    background: #555;
+    background: #666;
     color: #fff;
     border: none;
-    border-radius: 5px;
-    display: none; /* shown after we reach present day */
+    border-radius: 8px;
+    display: none; /* shown when present-day is reached */
   }
-  /* Milestone highlight style */
+
+  /* Highlight for final or milestone count */
   .highlight {
     font-size: 28px;
     color: #ffd700;
@@ -104,29 +112,29 @@
 <!-- 2. ANIMATED SCENE (Canvas) -->
 <canvas id="star-canvas"></canvas>
 
-<!-- Info Panel: current full moon count, date, etc. -->
+<!-- 3. INFO PANEL -->
 <div id="info-panel">
   <h2 id="moon-count">0 FULL MOONS LIVED</h2>
   <div id="moon-date">Date: N/A</div>
 </div>
 
-<!-- 4. Fast Forward to Next Milestone Button -->
-<button id="fastForwardMilestoneButton">Fast Forward to Next Milestone</button>
+<!-- 4. NEXT MILESTONE BUTTON -->
+<button id="next-milestone-btn"></button>
 
 <script>
 /* ---------------------------------------------------------
    GLOBALS & DOM ELEMENTS
    --------------------------------------------------------- */
-const inputScreen   = document.getElementById('input-screen');
-const birthInput    = document.getElementById('birthdate-input');
-const startButton   = document.getElementById('start-button');
-const starCanvas    = document.getElementById('star-canvas');
-const ctx           = starCanvas.getContext('2d');
+const inputScreen    = document.getElementById('input-screen');
+const birthInput     = document.getElementById('birthdate-input');
+const startButton    = document.getElementById('start-button');
+const starCanvas     = document.getElementById('star-canvas');
+const ctx            = starCanvas.getContext('2d');
 
-const infoPanel     = document.getElementById('info-panel');
-const moonCountEl   = document.getElementById('moon-count');
-const moonDateEl    = document.getElementById('moon-date');
-const milestoneBtn  = document.getElementById('fastForwardMilestoneButton');
+const infoPanel      = document.getElementById('info-panel');
+const moonCountEl    = document.getElementById('moon-count');
+const moonDateEl     = document.getElementById('moon-date');
+const milestoneBtn   = document.getElementById('next-milestone-btn');
 
 /* We'll assume an average lunar cycle length in days. */
 const LUNAR_CYCLE_DAYS = 29.53059;
@@ -135,7 +143,20 @@ const LUNAR_CYCLE_DAYS = 29.53059;
 let stars = [];
 const NUM_STARS = 100;
 
-/* Adjust canvas to window size */
+/* Animation timeline variables */
+let userBirthdate          = null;  // string from input
+let totalFullMoons         = 0;     // up to present day
+let nextMilestone          = 0;     // 10 or nearest 100
+let startCycle             = 0;     // start of animation range
+let currentEndCycle        = 0;     // target cycle index (end of animation range)
+let animationComplete      = false; // have we reached currentEndCycle?
+let startTime              = 0;     // when the current animation began
+let totalAnimationDuration = 10000; // default 10s from 0..present
+let freezeAnimation        = false; // used to stop drawing moon if needed
+
+/* ---------------------------------------------------------
+   ON PAGE LOAD: ADJUST CANVAS SIZE
+   --------------------------------------------------------- */
 function resizeCanvas() {
   starCanvas.width  = window.innerWidth;
   starCanvas.height = window.innerHeight;
@@ -143,48 +164,59 @@ function resizeCanvas() {
 window.addEventListener('resize', resizeCanvas);
 
 /* ---------------------------------------------------------
-   1. CALCULATE FULL MOONS FROM BIRTHDATE
+   CALCULATE FULL MOONS & DATES
    --------------------------------------------------------- */
 function calculateFullMoons(birthdate) {
   const birthTime = new Date(birthdate).getTime();
   const nowTime   = Date.now();
-  const diffDays  = (nowTime - birthTime) / (1000 * 60 * 60 * 24);
+  const diffDays  = (nowTime - birthTime) / (1000*60*60*24);
   if (diffDays < 0) return 0; // future birthdate fallback
   return Math.floor(diffDays / LUNAR_CYCLE_DAYS);
 }
 
-/* Convert a "cycle index" (0..someInteger) to an actual date from birth. */
 function cycleIndexToDate(birthdate, index) {
   const birth = new Date(birthdate);
   const daysAfter = index * LUNAR_CYCLE_DAYS;
-  const newTime = birth.getTime() + daysAfter * 86400000;
-  return new Date(newTime);
+  return new Date(birth.getTime() + daysAfter * 86400000);
 }
 
-/* Start Button Handler */
-let totalFullMoons = 0;
-let userBirthdate  = null;
+/* Determine next milestone (10 if <10, else next multiple of 100) */
+function computeNextMilestone(currentCount) {
+  if (currentCount < 10) return 10;
+  return Math.ceil(currentCount / 100) * 100;
+}
 
+/* ---------------------------------------------------------
+   START BUTTON HANDLER
+   --------------------------------------------------------- */
 startButton.addEventListener('click', () => {
   if (!birthInput.value) return;
   userBirthdate  = birthInput.value;
   totalFullMoons = calculateFullMoons(userBirthdate);
 
-  // Hide input, show canvas + info
+  // Hide the input screen, show the canvas + info panel
   inputScreen.style.display = 'none';
   starCanvas.style.display  = 'block';
   infoPanel.style.display   = 'block';
 
+  // Initialize starfield
   initStars();
   resizeCanvas();
-  requestAnimationFrame(animationLoop);
 
-  // Start the timeline
-  startAnimationTimeline();
+  // Setup initial animation: from cycle 0 -> totalFullMoons
+  startCycle      = 0;
+  currentEndCycle = totalFullMoons;
+  animationComplete = false;
+  freezeAnimation   = false;
+  startTime         = performance.now();
+  nextMilestone     = computeNextMilestone(totalFullMoons);
+  milestoneBtn.style.display = 'none'; // hidden until we finish the present-day run
+
+  requestAnimationFrame(animationLoop);
 });
 
 /* ---------------------------------------------------------
-   2. STARFIELD
+   STARFIELD
    --------------------------------------------------------- */
 function initStars() {
   stars = [];
@@ -200,168 +232,112 @@ function initStars() {
 }
 
 /* ---------------------------------------------------------
-   3. MOON PHASE ANIMATION TIMELINE
-   --------------------------------------------------------- */
-
-/**
- * We do a two-phase timeline to reach "present day":
- *  - Phase A (slow phase): 0 -> 1 cycle in 10 seconds
- *  - Phase B (fast phase): 1 -> totalFullMoons in ~5 seconds (or user-defined)
- *
- * Once we reach totalFullMoons, we freeze and highlight.
- * Then we display the "next milestone" button.
- */
-
-// Animation phases
-let animationStartTime = 0;
-const slowPhaseDuration = 10000;  // 10s for first cycle
-let fastPhaseDuration   = 5000;   // 5s for the rest
-let isAnimationComplete = false;
-
-// For future: if user picks to fast-forward to milestone (which might be > totalFullMoons)
-let finalTargetFullMoons = 0;
-
-// Called once at the beginning of the animation
-function startAnimationTimeline() {
-  animationStartTime = performance.now();
-  finalTargetFullMoons = totalFullMoons;
-  isAnimationComplete = false;
-}
-
-/* For the "next milestone" fast-forward button: */
-milestoneBtn.addEventListener('click', () => {
-  if (isAnimationComplete) {
-    // Find next milestone
-    let nextMilestone = (totalFullMoons < 10) ? 10 : Math.ceil(totalFullMoons / 100) * 100;
-    // If the user is *already* at that milestone or beyond, do nothing:
-    if (nextMilestone <= totalFullMoons) return;
-
-    // Restart timeline from current time, but now going from totalFullMoons to nextMilestone
-    finalTargetFullMoons = nextMilestone;
-    // We can keep the same slowPhaseDuration concept or do a single new fast approach:
-    // We'll do a simpler approach: the entire range is fast, 5 seconds from totalFullMoons-> nextMilestone
-    let cyclesRemaining = nextMilestone - totalFullMoons;
-    // For fun, let's scale the time by the number of cycles (but keep it minimal):
-    // But to keep it simple, let's do a fixed 5-second transition.
-    slowPhaseTimeLeft = 0; // not needed
-    fastPhaseDuration = 5000; 
-    // We "re-start" from present
-    animationStartTime = performance.now();
-    isAnimationComplete = false; 
-  }
-});
-
-/**
- * Return the "current cycle index" based on timeline, from 0 up to finalTargetFullMoons.
- * This can be fractional. 0..1 covers the slow phase, 1..finalTargetFullMoons covers the fast phase.
- * Once we surpass finalTargetFullMoons, we clamp.
- */
-function getCurrentCycleIndex(timeMs) {
-  if (isAnimationComplete) {
-    return finalTargetFullMoons;
-  }
-
-  let elapsed = timeMs - animationStartTime;
-
-  // If we're going from 0..1 or from totalFullMoons to next milestone
-  let startCycle = 0;
-  let endCycle   = finalTargetFullMoons;
-  // Are we in the scenario of re-fast-forwarding from totalFullMoons to next milestone?
-  // If totalFullMoons < finalTargetFullMoons, that means we've started a second phase from time=0:
-  // But let's keep it consistent: if we are done with the first pass (which ended at totalFullMoons),
-  // then we are effectively starting from totalFullMoons. 
-  // For simplicity, we'll do a single formula: 
-  // Phase A: from startCycle..startCycle+1 in slowPhaseDuration
-  // Phase B: from startCycle+1..endCycle in fastPhaseDuration
-  // If startCycle=0, endCycle= totalFullMoons => the original scenario.
-  // If startCycle= totalFullMoons, endCycle= nextMilestone => the new scenario.
-  // Let's define them carefully:
-
-  if (moonIsAtPresent()) {
-    // We are in the next milestone scenario
-    startCycle = totalFullMoons;
-  } else {
-    startCycle = 0;
-  }
-
-  let totalRange = endCycle - startCycle;
-  if (totalRange <= 1) {
-    // If it's 1 or less, we do a single slow-phase approach
-    let t = Math.min(1, elapsed / slowPhaseDuration);
-    let cycleVal = startCycle + t * totalRange;
-    if (t >= 1) isAnimationComplete = true;
-    return cycleVal;
-  } else {
-    // We have at least 1 cycle to do. So define 1 cycle for slow phase, the rest for fast.
-    // slowPhase covers: [startCycle..startCycle+1] in slowPhaseDuration
-    // fastPhase covers: [startCycle+1..endCycle] in fastPhaseDuration
-    if (elapsed <= slowPhaseDuration) {
-      // In slow phase
-      let fraction = elapsed / slowPhaseDuration;
-      return startCycle + fraction * 1; // from startCycle..(startCycle+1)
-    } else {
-      // Past slow phase
-      let leftover  = elapsed - slowPhaseDuration;
-      let fastRange = totalRange - 1;
-      let fraction  = Math.min(1, leftover / fastPhaseDuration);
-      let cycleVal  = startCycle + 1 + fraction * fastRange;
-      if (fraction >= 1) {
-        // We reached final target
-        isAnimationComplete = true;
-        return endCycle;
-      }
-      return cycleVal;
-    }
-  }
-}
-
-/** Check if we've already reached the user's real present day count. */
-function moonIsAtPresent() {
-  return finalTargetFullMoons === totalFullMoons;
-}
-
-/* ---------------------------------------------------------
    MAIN ANIMATION LOOP
    --------------------------------------------------------- */
 function animationLoop(timestamp) {
+  // Clear canvas
   ctx.clearRect(0, 0, starCanvas.width, starCanvas.height);
 
-  // 1) Draw starfield
+  // 1) Update & draw stars
   updateAndDrawStars();
 
-  // 2) Determine current fractional cycle
-  const cycleIndexFloat = getCurrentCycleIndex(timestamp);
-  // Draw the moon for the fractional part: e.g. if cycleIndexFloat=3.25 => we are 25% through the 4th cycle
-  const cycleIntegerPart = Math.floor(cycleIndexFloat);
-  const fractionInCycle  = cycleIndexFloat - cycleIntegerPart;
+  // 2) If not freezing, compute cycle index for this moment
+  let cycleIndexFloat = startCycle;
+  if (!freezeAnimation) {
+    cycleIndexFloat = getCurrentCycleIndex(timestamp);
+  }
 
-  // 3) Draw moon
-  drawMoon(fractionInCycle);
+  // 3) Draw moon according to fractional cycle
+  const intPart  = Math.floor(cycleIndexFloat);
+  const fracPart = cycleIndexFloat - intPart;
 
-  // 4) Update text: "NN FULL MOONS LIVED" and the date
-  moonCountEl.textContent = `${cycleIntegerPart} FULL MOONS LIVED`;
-  // Show the date corresponding to integer cycle
-  const dateForThisCycle = cycleIndexToDate(userBirthdate, cycleIntegerPart);
-  moonDateEl.textContent = `Date: ${dateForThisCycle.toDateString()}`;
+  drawMoon(fracPart);
 
-  // 5) If we have reached the final target, highlight the count, show milestone button
-  if (isAnimationComplete) {
-    // highlight
+  // 4) Update text
+  moonCountEl.textContent = `${intPart} FULL MOONS LIVED`;
+  const cycleDate = cycleIndexToDate(userBirthdate, intPart);
+  moonDateEl.textContent = `Date: ${cycleDate.toDateString()}`;
+
+  // 5) Check if we have completed the target cycle
+  if (animationComplete && !freezeAnimation) {
+    // Freeze the moon so it doesn't jiggle
+    freezeAnimation = true;
+
+    // Highlight the count
     moonCountEl.classList.add('highlight');
-    // Only show milestone button if we are at the present day scenario
-    if (moonIsAtPresent()) {
-      milestoneBtn.style.display = 'block';
-    }
+    // Show the next milestone button in the center
+    milestoneBtn.textContent = `Next Milestone: ${nextMilestone} Moons`;
+    milestoneBtn.style.display = 'block';
   }
 
   requestAnimationFrame(animationLoop);
 }
 
 /* ---------------------------------------------------------
-   DRAWING LOGIC
+   ANIMATION HELPER
    --------------------------------------------------------- */
 
-/* Starfield: update positions and draw */
+/**
+ * Maps real time to a fractional position from startCycle..currentEndCycle.
+ * We use an "ease-out" approach for a smooth finish.
+ */
+function getCurrentCycleIndex(currentTime) {
+  if (animationComplete) return currentEndCycle;
+
+  let elapsed  = currentTime - startTime;
+  let fraction = Math.min(1, elapsed / totalAnimationDuration);
+
+  // Ease out: simple quadratic
+  fraction = easeOutQuad(fraction);
+
+  let val = startCycle + fraction * (currentEndCycle - startCycle);
+  if (fraction >= 1) {
+    val = currentEndCycle;
+    animationComplete = true;
+  }
+  return val;
+}
+
+/** A simple ease-out function: f(t) = 1 - (1 - t)^2 */
+function easeOutQuad(t) {
+  return 1 - (1 - t) * (1 - t);
+}
+
+/* ---------------------------------------------------------
+   DRAW MOON (REALISTIC CRESCENT)
+   --------------------------------------------------------- */
+function drawMoon(phase) {
+  // Convert 0..1 to litFraction in 0..1..0
+  let litFraction = (phase <= 0.5)
+    ? phase / 0.5              // waxing
+    : 1 - (phase - 0.5)/0.5;   // waning
+
+  const cx = starCanvas.width / 2;
+  const cy = starCanvas.height / 2;
+  const radius = Math.min(starCanvas.width, starCanvas.height) * 0.35;
+
+  // Draw base moon
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.fillStyle = '#ccc';
+  ctx.beginPath();
+  ctx.arc(0, 0, radius, 0, 2*Math.PI, false);
+  ctx.fill();
+
+  // Shadow offset approach
+  ctx.globalCompositeOperation = 'destination-out';
+  const alpha  = 2 * litFraction - 1;    // range -1..1
+  const offset = alpha * 2 * radius;
+
+  ctx.beginPath();
+  ctx.arc(offset, 0, radius, 0, 2*Math.PI, false);
+  ctx.fill();
+
+  ctx.restore();
+  ctx.globalCompositeOperation = 'source-over';
+}
+
+/* Update star positions & draw them */
 function updateAndDrawStars() {
   for (let i = 0; i < stars.length; i++) {
     const s = stars[i];
@@ -379,66 +355,25 @@ function updateAndDrawStars() {
   }
 }
 
-/**
- * Draw the moon phase based on fractionInCycle in [0..1]
- * Realistic Crescent:
- *   - 0.0 => new moon (fully dark)
- *   - 0.5 => full moon (fully lit)
- *   - 1.0 => new moon again
- * We'll interpret fractionInCycle => litFraction
- *   litFraction =  (fractionInCycle <= 0.5)
- *                  ? fractionInCycle / 0.5
- *                  : 1 - (fractionInCycle - 0.5)/0.5
- * Then offset the "shadow" circle using an offset technique:
- *   alpha = (2*litFraction - 1) in [-1..1]
- *   offset = alpha * 2 * radius
- *   If alpha=1 => full moon (offset => circle is out of main bounds => no shadow).
- *   If alpha=-1 => new moon (offset => circle is completely covering the main circle).
- */
-function drawMoon(phase) {
-  // Convert 0..1 to 0..1..0 for waxing/waning
-  let litFraction = 0;
-  if (phase <= 0.5) {
-    // waxing
-    litFraction = phase / 0.5;    // 0..1
-  } else {
-    // waning
-    litFraction = 1 - (phase - 0.5)/0.5; // 1..0
-  }
-
-  const cx = starCanvas.width / 2;
-  const cy = starCanvas.height / 2;
-  const radius = Math.min(starCanvas.width, starCanvas.height) * 0.35;
-
-  // Draw base moon
-  ctx.save();
-  ctx.translate(cx, cy);
-  ctx.fillStyle = '#ccc';
-  ctx.beginPath();
-  ctx.arc(0, 0, radius, 0, 2*Math.PI, false);
-  ctx.fill();
-
-  // The shadow offset approach
-  ctx.globalCompositeOperation = 'destination-out';
-
-  // alpha in [-1..1], -1 => new moon, 0 => half, +1 => full
-  let alpha = 2 * litFraction - 1;
-  // offset
-  let offset = alpha * 2 * radius;
-
-  // "Shadow circle" to carve out the unlit portion
-  ctx.beginPath();
-  ctx.arc(offset, 0, radius, 0, 2*Math.PI, false);
-  ctx.fill();
-
-  ctx.restore();
-  // restore default composite
-  ctx.globalCompositeOperation = 'source-over';
-}
-
 /* ---------------------------------------------------------
-   END
+   NEXT MILESTONE BUTTON (FAST FORWARD)
    --------------------------------------------------------- */
+milestoneBtn.addEventListener('click', () => {
+  // If we're already at or past the milestone, do nothing
+  if (currentEndCycle >= nextMilestone) return;
+
+  // Un-freeze, un-highlight
+  freezeAnimation     = false;
+  animationComplete   = false;
+  moonCountEl.classList.remove('highlight');
+  milestoneBtn.style.display = 'none';
+
+  // Start from currentEndCycle, go to nextMilestone
+  startCycle      = currentEndCycle;
+  currentEndCycle = nextMilestone;
+  startTime       = performance.now();
+  totalAnimationDuration = 5000; // fast-forward in 5s, can be adjusted
+});
 </script>
 </body>
 </html>
